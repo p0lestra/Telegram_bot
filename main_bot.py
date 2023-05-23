@@ -1,51 +1,8 @@
-import requests
 import telebot
-import json
-
-TOKEN = '6276958231:AAF18JXrc5KaQ17TGcDk2CAFixjv-QaVg2U'
-api = {
-    "apikey": "eKR8tZwRbBYMot7PONndd8EZ5qVAn7vf"
-}
+from config import TOKEN, keys
+from extensions import APIException, MoneyConverter
 
 bot = telebot.TeleBot(TOKEN)
-
-keys = {
-    'рубль': 'RUB',
-    'доллар': 'USD',
-    'евро': 'EUR'
-}
-
-
-class APIException(Exception):
-    pass
-
-
-class MoneyConverter:
-    @staticmethod
-    def convert(to: str, base: str, amount: str):
-        if to == base:
-            raise APIException(f'Не удалось перевести одинаковые валюты {base}')
-
-        try:
-            to_ticker = keys[to]
-        except KeyError:
-            raise APIException(f'Не удалось обработать валюту {to}')
-        try:
-            base_ticker = keys[base]
-        except KeyError:
-            raise APIException(f'Не удалось обработать валюту {base}')
-        try:
-            amount = float(amount)
-        except ValueError:
-            raise APIException(f'Не удалось обработать количество {amount}')
-
-        r = requests.get(
-            f"https://api.apilayer.com/exchangerates_data/convert?to={to_ticker}&from={base_ticker}&amount={amount}",
-            headers=api)
-        total = json.loads(r.content)['result']
-        print(f'{total}')
-
-        return total
 
 
 @bot.message_handler(commands=['help', 'start'])
@@ -66,15 +23,20 @@ def values(message: telebot.types.Message):
 
 @bot.message_handler(content_types=['text'])
 def convert(message: telebot.types.Message):
-    parametrs = message.text.split(' ')
+    try:
+        parametrs = message.text.split(' ')
 
-    if len(parametrs) != 3:
-        raise APIException('Слишком много значений')
-    base, to, amount = parametrs
-
-    total = MoneyConverter.convert(to, base, amount)
-    text = f'Цена {amount} {base} в {to} = {total}'
-    bot.send_message(message.chat.id, text)
+        if len(parametrs) != 3:
+            raise APIException('Слишком много значений')
+        base, to, amount = parametrs
+        total = MoneyConverter.get_price(to, base, amount)
+    except APIException as e:
+        bot.reply_to(message, f'Ошибка пользователя.\n{e}')
+    except Exception as e:
+        bot.reply_to(message, f'Не удалось обработать комманду.\n{e}')
+    else:
+        text = f'Цена {amount} {base} в {to} = {total}'
+        bot.send_message(message.chat.id, text)
 
 
 bot.polling()
